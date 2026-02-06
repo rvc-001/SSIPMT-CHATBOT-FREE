@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+sentence-transformers==2.7.0
+faiss-cpu
+numpy
+pydantic
+scikit-learn

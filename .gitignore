@@ -1,0 +1,22 @@
+# --- Python & Virtual Environment ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# --- Project Specific (Generated Data) ---
+# We ignore the "Brain" files because the server (Render) 
+# should generate its own fresh copy using the Build Command.
+vector_index.faiss
+metadata.pkl
+
+# --- IDE & Editor Settings ---
+.vscode/
+.idea/
+*.swp
+
+# --- Operating System Files ---
+.DS_Store
+Thumbs.db
