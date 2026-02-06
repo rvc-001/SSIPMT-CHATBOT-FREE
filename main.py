@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles  # NEW
+from fastapi.responses import FileResponse   # NEW
 import faiss
 import pickle
 import re
@@ -10,9 +12,12 @@ from sentence_transformers import SentenceTransformer
 MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
 INDEX_FILE = 'vector_index.faiss'
 META_FILE = 'metadata.pkl'
-SIMILARITY_THRESHOLD = 0.30  # Lowered slightly for short queries
+SIMILARITY_THRESHOLD = 0.30
 
 app = FastAPI()
+
+# 1. Mount the images folder so the website can load logos
+app.mount("/images", StaticFiles(directory="images"), name="images")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,22 +33,17 @@ metadata = []
 
 # --- EXTENDED VOCAB MAP ---
 HINGLISH_VOCAB = {
-    # Question Words
     "konse": "which", "konsa": "which", "kaun": "which", "kon": "which", "koun": "which",
     "kya": "what", "kyu": "why", "kyun": "why",
     "kaise": "how", "kaisa": "how",
     "kahan": "where", "kidhar": "where",
     "kab": "when",
     "kitna": "how much", "kitni": "how much", "kitne": "how much",
-    
-    # Context words (Crucial for "Placement ke baare me")
     "baare": "about", "bare": "about",
     "me": "in", "mein": "in", "ma": "in",
     "ka": "of", "ki": "of", "ke": "of", "ko": "to",
     "aur": "and", "evam": "and", "tatha": "and",
     "sath": "with",
-    
-    # Verbs / Auxiliaries
     "hai": "is", "hain": "are", "ha": "is", "ho": "are", "h": "is",
     "tha": "was", "thi": "was", "the": "were",
     "chahiye": "want", "mangta": "want",
@@ -51,9 +51,7 @@ HINGLISH_VOCAB = {
     "lu": "take", "lena": "take", "le": "take",
     "lagti": "provided", "lagta": "provided", 
     "milti": "available", "milta": "available", "milega": "available",
-    "aati": "comes", "aata": "comes", # "Companies konsi aati hai"
-    
-    # Noun corrections
+    "aati": "comes", "aata": "comes",
     "naukri": "job",
 }
 
@@ -89,17 +87,19 @@ def get_response_language(text):
 
 def normalize_query(text):
     text_lower = text.lower()
-    # Normalize: Split by words but preserve sentence structure
     tokens = re.findall(r'\w+|[^\w\s]', text_lower, re.UNICODE)
-    
     normalized_tokens = []
     for token in tokens:
         if token in HINGLISH_VOCAB:
             normalized_tokens.append(HINGLISH_VOCAB[token])
         else:
             normalized_tokens.append(token)
-            
     return " ".join(normalized_tokens)
+
+# 2. Serve the HTML file at the root URL
+@app.get("/")
+async def read_root():
+    return FileResponse("index.html")
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
@@ -108,10 +108,7 @@ async def chat_endpoint(request: ChatRequest):
     if user_message.lower() in GREETINGS:
         return {"reply": GREETINGS[user_message.lower()]}
 
-    # 1. Normalize (Hinglish -> English Intent)
     search_query = normalize_query(user_message)
-
-    # 2. Search
     query_vector = model.encode([search_query], convert_to_numpy=True, normalize_embeddings=True)
     D, I = index.search(query_vector, k=1)
     
@@ -120,13 +117,11 @@ async def chat_endpoint(request: ChatRequest):
     
     print(f"User: '{user_message}' | Search: '{search_query}' | Score: {best_score:.4f}")
 
-    # 3. Threshold Check
     if best_score < SIMILARITY_THRESHOLD:
         return {
             "reply": "Sorry, I didn't find specific information on that. Please ask about **Admission**, **Placement**, **Fees**, or **Courses**."
         }
     
-    # 4. Result Logic
     target_lang = get_response_language(user_message)
     result_item = metadata[best_idx]
     
